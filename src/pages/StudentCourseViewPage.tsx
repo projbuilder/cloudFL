@@ -23,6 +23,7 @@ import { FLModelTrainer } from '@/services/flModelTrainer'
 // Phase 4: Gamification & Collaboration
 import { GamificationDashboard } from '@/components/GamificationDashboard'
 import { DiscussionForum } from '@/components/DiscussionForum'
+import { checkAndAwardAchievements } from '@/services/gamificationService'
 
 interface Module {
   id: string
@@ -182,8 +183,37 @@ export default function StudentCourseViewPage() {
         setTimeout(async () => {
           try {
             if (flTrainer) {
-              await flTrainer.train(trainingData, 10)
+              const modelWeights = await flTrainer.train(trainingData, 10)
               console.log('✅ FL Training complete!')
+              
+              // Save FL update to database
+              const { error: flError } = await supabase
+                .from('fl_model_updates')
+                .insert({
+                  student_id: user.id,
+                  course_id: courseId,
+                  model_weights: modelWeights,
+                  accuracy: modelWeights.accuracy * 100,
+                  training_round: 1,
+                  privacy_budget_used: 0.5,
+                  created_at: new Date().toISOString()
+                })
+              
+              if (flError) {
+                console.error('❌ Error saving FL update:', flError)
+              } else {
+                console.log('✅ FL update saved to database')
+              }
+              
+              // Check and award achievements after quiz completion
+              console.log('🏆 Checking for new achievements...')
+              const newAchievements = await checkAndAwardAchievements(user.id, courseId)
+              if (newAchievements.length > 0) {
+                console.log(`🎉 Unlocked ${newAchievements.length} new achievement(s)!`)
+                newAchievements.forEach(ach => {
+                  console.log(`   ✨ ${ach.achievement?.icon} ${ach.achievement?.name}`)
+                })
+              }
             }
           } catch (error) {
             console.error('❌ FL Training error:', error)

@@ -44,25 +44,32 @@ export function CloudAdminDashboard() {
 
   async function loadFLMetrics() {
     try {
-      // Get all FL model updates
+      // Get all FL model updates (using correct column names)
       const { data: flUpdates } = await supabase
         .from('fl_model_updates')
         .select(`
           id,
           student_id,
-          local_accuracy,
-          local_loss,
-          epsilon_used,
-          contribution_score,
-          created_at,
-          users:student_id(email)
+          accuracy,
+          training_round,
+          privacy_budget_used,
+          created_at
         `)
         .order('created_at', { ascending: false })
 
-      if (!flUpdates) {
+      if (!flUpdates || flUpdates.length === 0) {
         setLoading(false)
         return
       }
+
+      // Get user emails for all student IDs
+      const studentIds = [...new Set(flUpdates.map((u: any) => u.student_id))]
+      const { data: users } = await supabase
+        .from('users')
+        .select('id, email')
+        .in('id', studentIds)
+      
+      const emailMap = new Map(users?.map(u => [u.id, u.email]) || [])
 
       // Calculate node-level metrics
       const nodeMap = new Map<string, FLNodeMetrics>()
@@ -73,7 +80,7 @@ export function CloudAdminDashboard() {
         if (!nodeMap.has(nodeId)) {
           nodeMap.set(nodeId, {
             nodeId,
-            studentEmail: update.users?.email || 'Unknown',
+            studentEmail: emailMap.get(nodeId) || 'Unknown',
             totalUpdates: 0,
             avgAccuracy: 0,
             lastUpdate: update.created_at,
@@ -84,9 +91,9 @@ export function CloudAdminDashboard() {
         
         const node = nodeMap.get(nodeId)!
         node.totalUpdates++
-        node.avgAccuracy += update.local_accuracy || 0
-        node.privacyBudget += update.epsilon_used || 0
-        node.dataContributed += update.contribution_score || 1
+        node.avgAccuracy += update.accuracy || 0
+        node.privacyBudget += update.privacy_budget_used || 0
+        node.dataContributed += 1
         
         if (update.created_at > node.lastUpdate) {
           node.lastUpdate = update.created_at

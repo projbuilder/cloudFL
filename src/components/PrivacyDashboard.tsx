@@ -34,9 +34,10 @@ export function PrivacyDashboard({ courseId, studentId, onTrainingStatusChange }
 
       if (updates && updates.length > 0) {
         setContributionCount(updates.length)
-        const latestAccuracy = updates[0].local_accuracy || 0
+        const latestAccuracy = updates[0].accuracy || 0
         setLocalAccuracy(latestAccuracy)
-        setPrivacyBudget(1.0 - (updates.length * 0.05)) // Decrease privacy budget with each contribution
+        const budgetUsed = updates.reduce((sum, u) => sum + (u.privacy_budget_used || 0), 0)
+        setPrivacyBudget(Math.max(0, 1.0 - budgetUsed)) // Decrease privacy budget with each contribution
       }
     } catch (error) {
       console.error('Error loading FL data:', error)
